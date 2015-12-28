@@ -1,0 +1,697 @@
+//Set javacc options
+options
+{
+  static = true;
+}
+
+PARSER_BEGIN (MyNewGrammar)
+import java.io.*;
+import net.sourceforge.plantuml.*;
+import java.awt.image.*;
+import javax.imageio.*;
+import java.lang.*;
+import java.util.*;
+
+
+public class MyNewGrammar
+{
+  public static ArrayList <String > dependencyClass =new ArrayList<String >(); //Stores Class Names
+  public static ArrayList <String > dependencyInterface =new ArrayList<String >(); //Stores Interface Names
+  public static HashMap <String,String > dependencyVar= new HashMap<String,String >(); // Stores Var and return types
+  public static HashMap <String,String > dependencyIntVar= new HashMap<String,String >(); //Stores Method parameter and return types
+  public static ArrayList <String> cardinality= new ArrayList<String>(); //Stores Association data
+  public static int index,intIndex;
+  public static ArrayList <String > getSetVariables = new ArrayList<String >(); // getter and setter variables
+  public static String returnValue="";
+  public static HashMap<String, ArrayList<String >> implementRel = new HashMap<String, ArrayList<String >>(); //Class..| > Interface
+  public static HashMap<String,ArrayList<String >> interfaceMethods = new HashMap<String,ArrayList<String >>(); //Methods within interface
+  public static HashMap<String,String > classMethods = new HashMap<String,String >(); //Methods within a class
+  public static int impRelIndex=0;
+
+  //Skip method body
+  public static void error_skipto(int kind,Stack stack,String identifierA) {
+     int obracketKind=OBracket;
+     Token t;
+	 while(!stack.isEmpty())
+	 {
+	   t = getNextToken();
+       if(t.kind==RETURNSTATEMENT) //If token is a return statement	   {	     	returnValue= t.toString();
+	   }
+	   if(t.kind==ASSIGNSTATEMENT) returnValue= t.toString(); //if token is an assignment statement
+	   if(t.kind==ID)	   {	      dependencyIntVar.put(identifierA+","+intIndex,t.toString());
+	      intIndex++;
+	   }
+   	   if(t.kind==obracketKind )
+       {
+      		stack.push(t.toString());
+       }
+       else if(t.kind==kind)
+       {
+       		stack.pop();
+       }
+    }
+  }
+
+  public static String var_skipto(int kind)  {
+	Token t;
+	String temp="";
+	while(true) {	    t=getToken(1);
+	   	if(t.kind==kind)
+	  	{
+	   		break;	  	}
+	  	t=getNextToken();	}
+	return temp;  }
+
+  	private static Boolean CheckFileFormat(String outputFileFormat) {
+		if(outputFileFormat.equalsIgnoreCase("png")  || outputFileFormat.equalsIgnoreCase("pdf"))
+			return true;
+		else
+			return false;
+	}
+	
+  public static void main(String[] args)throws ParseException
+  {
+    String plantUMLData="";
+    int fileIndex=1;
+    try
+    {
+      	if(args.length>0 && args.length==2)      	{
+	        String target_dir = args[0];
+	        File directory = new File(target_dir);
+	        Boolean isValidDirectory = directory.isDirectory();
+			if(!isValidDirectory)
+			{
+				System.out.println("Invalid Path.");
+				System.exit(1);
+			}
+			fileIndex = args[1].indexOf('.');
+			if(fileIndex<0){
+				System.out.println("Please mention proper file type For eg: .png or .pdf");
+				System.exit(1);
+			}
+			else
+			{
+				String outputFileFormat = args[1].substring(fileIndex+1, args[1].length());
+				Boolean hasAllowedFormat = CheckFileFormat(outputFileFormat);
+				if(!hasAllowedFormat)
+				{
+					System.out.println("The following formats are allowed: .png,.pdf");
+					System.exit(1);
+				}	
+			}
+	        File[] files = directory.listFiles(new FilenameFilter() {
+				@Override
+				public boolean accept(File dir, String name) {
+					return name.toLowerCase().endsWith(".java");
+				}
+			});
+			PrintWriter writer = new PrintWriter("JInput.txt", "UTF-8");
+	        for (File f : files) {
+	            if(f.isFile()) {
+	                BufferedReader inputStream = null;
+	
+	                try {
+	                    inputStream = new BufferedReader(
+	                                    new FileReader(f));
+	                    String line;
+	
+	                    while ((line = inputStream.readLine()) != null) {
+	                       writer.println(line);
+	
+	                    }
+	                }
+	                finally {
+	                    if (inputStream != null) {
+	                        inputStream.close();
+	                    }
+	                }
+	            }
+	        }
+	      	writer.close();
+	      	MyNewGrammar parser = new MyNewGrammar(new FileInputStream("JInput.txt"));
+		    
+		    plantUMLData="@startuml\nskinparam classAttributeIconSize 0\nskinparam classFontStyle bold\n";
+		    while(!plantUMLData.contains("@endUML"))
+		    {
+		      //Parse each line
+		      plantUMLData = parser.parseOneLine(plantUMLData);
+		    }		
+		    ByteArrayOutputStream output = new ByteArrayOutputStream();
+			SourceStringReader reader=new SourceStringReader(plantUMLData);
+			String desc =reader.generateImage(output);
+			byte [] data = output.toByteArray();
+		    InputStream inputImageStream = new ByteArrayInputStream(data);
+		    BufferedImage umlImage = ImageIO.read(inputImageStream);
+		    ImageIO.write(umlImage, "png", new File(args[1]));
+		    System.out.print("Diagram generated successfully!!");
+		}	    
+	 }
+  	 catch(Exception e)
+  	 {
+  	    System.out.println(plantUMLData);
+  	  	System.out.println(e.getMessage());
+  	  	e.printStackTrace();
+  	  	System.out.println("Error in grammar!!");
+  	 }
+  }
+}
+
+PARSER_END(MyNewGrammar)
+
+SKIP :
+{
+  " "
+| "\r"
+| "\t"
+| "\n"
+| "/*@egen*/" : AFTER_EGEN
+
+}
+<AFTER_EGEN> SKIP : {
+<~[]> : DEFAULT
+}
+
+   
+/* COMMENTS */
+<DEFAULT> MORE : {
+"//" : IN_SINGLE_LINE_COMMENT
+| <"/**" ~["/"]> : IN_FORMAL_COMMENT
+| "/*" : IN_MULTI_LINE_COMMENT
+| "/*@bgen(jjtree" : IN_MULTI_LINE_COMMENT
+}
+
+   
+<IN_SINGLE_LINE_COMMENT> SPECIAL_TOKEN : {
+<SINGLE_LINE_COMMENT: "\n" | "\r" | "\r\n"> : DEFAULT
+}
+
+   
+<IN_FORMAL_COMMENT> SPECIAL_TOKEN : {
+<FORMAL_COMMENT: "*/"> : DEFAULT
+}
+
+   
+<IN_MULTI_LINE_COMMENT> SPECIAL_TOKEN : {
+<MULTI_LINE_COMMENT: "*/"> : DEFAULT
+}
+
+   
+<IN_SINGLE_LINE_COMMENT,IN_FORMAL_COMMENT,IN_MULTI_LINE_COMMENT> MORE : {
+<~[]>
+}
+
+
+TOKEN : 
+{
+  < PUBLIC: "public" >|
+  < PRIVATE: "private" >|
+  < PROTECTED: "protected" >|
+  < STATIC:"static" >|
+  < CLASS : "class">|
+  < INTERFACE:"interface" >|
+  < EXTENDS : "extends" >|
+  < IMPLEMENTS : "implements" >|
+  < PRIMDATATYPE :  "int"|"String" |"float" |"void" |"boolean"|"char"|"byte"|"short"|"long"|"double">|
+  < REFDATATYPE: < PRIMDATATYPE >( "[" "]" )+ >|
+  < OBracket : "{">|
+  < CBracket :"}" >|
+  < SEMICOLON: ";" >|
+  < COMMA: "," >|
+  < ORB: "(" >|
+  < CRB: ")" >|
+  < ABSTRACT:"abstract" >|
+  < COLLECTION:"Collection" |"ArrayList"|"List"|"Set">|
+  < GT:">" >|
+  < LT:"<" >|
+  < OSB:"[" >|
+  < STAR:"*" >|
+  < CSB:"]" >|
+  < RETURN:"return" >|
+  < EQUALS:"=" >|
+  < BS:"/" >|
+  < NEW:"new" >|
+  < COLON: ":" >|
+  < OPERATORS:"+"|"-"|"/" >|
+  < ASSIGNMENTOPERATORS:"*="|"/="|"%="|"+="|"-="|"<<="|">>="|">>>="|"&="|"^="|"|=" |"!="|"!">|
+  < RSIGNEDSHIFT :">"">">|
+  < RUNSIGNEDSHIFT: " >"" >"" >" >|
+  < DOT:"." >|
+  < NULLLITERAL:"null" >|
+  < SUPER:"super" >|
+  < INSTANCEOF:"instanceOf" >|
+  < IF:"if" >|
+  < ELSE:"else" >|
+  < SWITCH:"switch" >|
+  < CASE:"case" >|
+  < DEFAULT1:"default" >|
+  < ASSERT :"assert" >|
+  < FOR:"for" >|
+  < DO:"do" >|
+  < WHILE:"while" >| 
+  <BREAK:"break">|
+  <CONTINUE:"continue">|
+  <THROW:"throw">|
+  <TRY:"try">|
+  <CATCH:"catch">|
+  <SYNCHRONIZED:"synchronized">|
+  <FINALLY:"finally">|
+  < SYSTEM:"System.out.println">|
+  < IMPORT:"import" >|
+  < PACKAGE:"package">|
+  < VOLATILE:"volatile" > |
+  < AT:"@" >|
+  < ENUM:"enum" >|
+  < THROWS:"throws" >
+}
+TOKEN:
+{
+  < RETURNSTATEMENT: "return"(" ")*"this."< ID >(" ")*";">|
+  < ASSIGNSTATEMENT: "this."< ID >(" ")*"="(" ")*< ID >(" ")*";">|
+  < METHODCALL: ("this"("."< ID >"("(< ID >)*")")*) >|
+  < NAMESPACE:((< ID >["."])+("*")?)>|
+  < VARASSIGN: "new"(" ")*< ID >>
+}
+<DEFAULT> TOKEN : {
+<INTEGER_LITERAL: <DECIMAL_LITERAL> (["l","L"])? | <HEX_LITERAL> (["l","L"])? | <OCTAL_LITERAL> (["l","L"])?>
+| <#DECIMAL_LITERAL: ["1"-"9"] (["0"-"9"])*>
+| <#HEX_LITERAL: "0" ["x","X"] (["0"-"9","a"-"f","A"-"F"])+>
+| <#OCTAL_LITERAL: "0" (["0"-"7"])*>
+| <FLOATING_POINT_LITERAL: <DECIMAL_FLOATING_POINT_LITERAL> | <HEXADECIMAL_FLOATING_POINT_LITERAL>>
+| <#DECIMAL_FLOATING_POINT_LITERAL: (["0"-"9"])+ "." (["0"-"9"])* (<DECIMAL_EXPONENT>)? (["f","F","d","D"])? | "." (["0"-"9"])+ (<DECIMAL_EXPONENT>)? (["f","F","d","D"])? | (["0"-"9"])+ <DECIMAL_EXPONENT> (["f","F","d","D"])? | (["0"-"9"])+ (<DECIMAL_EXPONENT>)? ["f","F","d","D"]>
+| <#DECIMAL_EXPONENT: ["e","E"] (["+","-"])? (["0"-"9"])+>
+| <#HEXADECIMAL_FLOATING_POINT_LITERAL: "0" ["x","X"] (["0"-"9","a"-"f","A"-"F"])+ (".")? <HEXADECIMAL_EXPONENT> (["f","F","d","D"])? | "0" ["x","X"] (["0"-"9","a"-"f","A"-"F"])* "." (["0"-"9","a"-"f","A"-"F"])+ <HEXADECIMAL_EXPONENT> (["f","F","d","D"])?>
+| <#HEXADECIMAL_EXPONENT: ["p","P"] (["+","-"])? (["0"-"9"])+>
+| <CHARACTER_LITERAL: "\'" (~["\'","\\","\n","\r"] | "\\" (["n","t","b","r","f","\\","\'","\""] | ["0"-"7"] (["0"-"7"])? | ["0"-"3"] ["0"-"7"] ["0"-"7"])) "\'">
+| <STRING_LITERAL: "\"" (~["\"","\\","\n","\r"] | "\\" (["n","t","b","r","f","\\","\'","\""] | ["0"-"7"] (["0"-"7"])? | ["0"-"3"] ["0"-"7"] ["0"-"7"]))* "\"">
+| < BOOLEANLITERAL :"true"|"false">
+}
+
+TOKEN : {
+<ID: <LETTER> (<PART_LETTER>)* >
+| <#LETTER: ["$","A"-"Z","_","a"-"z"]>
+| <#PART_LETTER: ["$","0"-"9","A"-"Z","_","a"-"z"]>
+|  < THIS:"this."< ID > >
+}
+
+String parseOneLine(String plantUMLData):
+{
+  ArrayList a;
+}
+{
+  ("package"((< NAMESPACE ><ID >)|< ID >)";")?  {  }a=returnID()
+  { 
+    for(int i=0; i<a.size();i++)
+    {
+		plantUMLData += a.get(i);
+    }
+    return plantUMLData;
+  }
+  |< EOF > //if eof
+  {
+    Iterator<String> keySetIterator = dependencyVar.keySet().iterator();
+    Iterator<String> keySetIteratorInt = dependencyIntVar.keySet().iterator();
+    String[] parts;
+    String multiplicity1,multiplicity2,multiplicity3="\" \"";
+    ArrayList<String > A = new ArrayList<String >();
+    ArrayList<String > B = new ArrayList<String >();
+    ArrayList<String > C = new ArrayList<String >();
+    int replaceVarIndex=0;
+	while(keySetIterator.hasNext())
+	{
+		String nextKey = keySetIterator.next();
+		parts=nextKey.split(",");
+		if(dependencyVar.get(nextKey).contains("[*]"))
+		{
+			multiplicity1=dependencyVar.get(nextKey).substring(0,dependencyVar.get(nextKey).indexOf("["));
+			multiplicity2=dependencyVar.get(nextKey).substring(dependencyVar.get(nextKey).indexOf("[")+1,
+					dependencyVar.get(nextKey).indexOf("]"));
+			A.add(parts[0]);
+			B.add(multiplicity1);
+			C.add("\""+multiplicity2+"\"");
+		}
+		else
+		{
+			multiplicity1=dependencyVar.get(nextKey);
+			multiplicity2=" ";
+			A.add(parts[0]);
+			B.add(multiplicity1);
+			C.add("\""+multiplicity2+"\"");
+		}
+		//System.out.println(dependencyVar.get(nextKey));
+		for(int i=0;i<dependencyClass.size();i++)
+		{
+		  	//Remove variables of type Interface
+		  	for(int p=0;p<dependencyInterface.size();p++)
+			{
+			  if(multiplicity1.equals(dependencyInterface.get(p)))
+			  {
+			      if(!plantUMLData.contains(parts[0]+"--"+"\""+multiplicity2+"\""+dependencyInterface.get(p)))
+			      	plantUMLData+="\n"+parts[0]+"--"+"\""+multiplicity2+"\""+dependencyInterface.get(p)+"\n";
+			  }
+			  if(cardinality.get(replaceVarIndex).contains(dependencyInterface.get(p)))
+			  {
+			    String strResult=
+					plantUMLData.replace(cardinality.get(replaceVarIndex),"");
+				plantUMLData=strResult;
+			  }
+			}
+			//if variable type is of class
+			if(multiplicity1.equals(dependencyClass.get(i)))
+			{
+				if(plantUMLData.contains(cardinality.get(replaceVarIndex)))
+				{
+					String strResult=
+							plantUMLData.replace(cardinality.get(replaceVarIndex),"");
+					plantUMLData=strResult;
+					
+				}
+				int id;
+				for(int t=0;t<A.size();t++)
+				{
+					if(parts[0].equals(B.get(t)) && dependencyClass.get(i).equals(A.get(t)))
+					{
+						multiplicity3=C.get(t);
+					}
+				}
+				if(!(plantUMLData.contains(dependencyClass.get(i)+" "+"\""+multiplicity2+"\""+" -- "+multiplicity3+" "+parts[0])))
+				{
+					plantUMLData+="\n"+parts[0]+" "+multiplicity3+" -- \""+multiplicity2+"\""+" "+dependencyClass.get(i)+"\n";
+				} 
+			}
+		}
+		replaceVarIndex++;
+	}
+	String replacedString;
+	int count=0;
+	//for uses relationship 
+	while(keySetIteratorInt.hasNext())
+	{
+		String nextKey = keySetIteratorInt.next();
+		parts=nextKey.split(",");
+	
+		for(int i=0;i<dependencyInterface.size();i++)
+		{
+			if(dependencyIntVar.get(nextKey).equals(dependencyInterface.get(i)))
+			{
+				if (!(plantUMLData.contains(parts[0]+"..>"+dependencyInterface.get(i)+":uses")))
+				{
+				  plantUMLData+=parts[0]+"..>"+dependencyInterface.get(i)+":uses"+"\n";
+				}	
+			}
+		}
+	}
+	plantUMLData= plantUMLData + "hide interface circle\n\n@endUML";return plantUMLData;
+  }
+}
+
+//If classes or interfaces or enum
+ArrayList returnID():
+{
+  ArrayList <String > identifierName = new ArrayList<String >();
+  ArrayList <String > interfaceIdentifier = new ArrayList<String >();
+  Token identifierA,identifierB=null,identifierC=null;
+  HashMap <String,String > varIdentifiers =new HashMap <String,String >();
+  HashMap <String,String > varNames =new HashMap <String,String >();
+  String varMethods="";
+  Token classOrInt;
+}
+{
+  
+  (LOOKAHEAD(5)((< IMPORT >)(< NAMESPACE >(< ID >|< COLLECTION >)?|< ID >)< SEMICOLON >)*
+  (<PUBLIC >)?("abstract")?<CLASS > identifierA = < ID >(<EXTENDS > identifierB=< ID >)?(< IMPLEMENTS > interfaceIdentifier=returnIntID())?
+   (< OBracket >)
+     varIdentifiers=returnVariables() varNames=returnMethods(identifierA)(<CBracket >)
+    {
+	    identifierName.add("\nclass "+identifierA.toString());
+	    dependencyClass.add(identifierA.toString());
+	    if(identifierB!=null)
+	    identifierName.add("--|> "+identifierB.toString()+"\n");
+	    for(int i=0; i<interfaceIdentifier.size();i++)
+	    {
+	      	identifierName.add("\ninterface " +interfaceIdentifier.get(i)+"<<interface >> \n");
+	      	if(!dependencyInterface.contains(interfaceIdentifier.get(i)))
+	      			dependencyInterface.add(interfaceIdentifier.get(i)); 
+			identifierName.add(identifierA.toString()+"..|>"+ interfaceIdentifier.get(i)+"\n");
+			impRelIndex++;
+	    }
+	    implementRel.put(identifierA.toString(),interfaceIdentifier);
+	    {  
+	      identifierName.add("\nclass " + identifierA +"{\n");
+	      Iterator<String> keySetIterator = varIdentifiers.keySet().iterator();
+	      while(keySetIterator.hasNext()){
+		        String nextKey = keySetIterator.next();
+		        if(!nextKey.contains("#"))
+		        	identifierName.add(nextKey+":"+ varIdentifiers.get(nextKey)+"\n");
+		        cardinality.add(nextKey+":"+ varIdentifiers.get(nextKey)+"\n");
+		        dependencyVar.put(identifierA.toString()+","+index,varIdentifiers.get(nextKey));
+		        index++;
+	      }
+	      Iterator<String> keySetIteratorInt = varNames.keySet().iterator();
+	      String result="";
+	   	  while(keySetIteratorInt.hasNext()){
+	        String nextKey = keySetIteratorInt.next();
+	        if(varNames.get(nextKey).contains("^") &&varNames.get(nextKey).contains("^")) 
+	        	result=varNames.get(nextKey).substring(varNames.get(nextKey).indexOf("^") + 1,varNames.get(nextKey).indexOf("~"));
+	        dependencyIntVar.put(identifierA+","+intIndex,result);
+	        intIndex++;
+	        varMethods += "\n"+(nextKey + "("+ varNames.get(nextKey).replace("^","").replace("~","") );
+	      }
+	      if(!getSetVariables.isEmpty())
+	      {
+		      	for(int count=0;count<getSetVariables.size();count++)
+		      	{
+				      for(int temp=0;temp<identifierName.size();temp++)
+				      {
+				         if(identifierName.get(temp).contains("-"+getSetVariables.get(count)+":")
+				          && Collections.frequency(getSetVariables,getSetVariables.get(count))==2)
+				         {
+				           String str1= identifierName.get(temp);
+				           String str= str1.replace(("-"+getSetVariables.get(count)+":"),("+"+getSetVariables.get(count)+":"));
+				           identifierName.set(temp,str);
+				         }
+				      }
+		    	}
+	       }
+	      classMethods.put(identifierA.image,varMethods);
+	      identifierName.add(varMethods);
+	      identifierName.add("\n}\n");
+	   	}
+	}|
+	LOOKAHEAD(5)(< IMPORT >(< NAMESPACE >|< ID >)< SEMICOLON >)*< PUBLIC >< INTERFACE >identifierA=< ID >
+	(< OBracket >)varNames=returnMethods(identifierA)(<CBracket >)
+	{
+	  	  if(!dependencyInterface.contains(identifierA.toString()))
+	    		dependencyInterface.add(identifierA.toString());
+	      identifierName.add("\ninterface "+identifierA.toString());
+	      Iterator<String> keySetIteratorInt = varNames.keySet().iterator();
+	      identifierName.add("\ninterface " + identifierA +"<<interface >> {\n");
+	      String result="";
+	      ArrayList<String > tempArrayList = new ArrayList<String >();
+	   	  while(keySetIteratorInt.hasNext()){
+	        String nextKey = keySetIteratorInt.next();
+	        if(varNames.get(nextKey).contains("^") &&varNames.get(nextKey).contains("^")) 
+	        	result=varNames.get(nextKey).substring(varNames.get(nextKey).indexOf("^") + 1,varNames.get(nextKey).indexOf("~"));
+	        varMethods += "\n"+(nextKey + "("+ varNames.get(nextKey).replace("^","").replace("~","") );
+	        tempArrayList.add(nextKey + "("+ varNames.get(nextKey).replace("^","").replace("~","") );
+	      }
+	      identifierName.add(varMethods);
+	      interfaceMethods.put(identifierA.image,tempArrayList);
+	      identifierName.add("\n}\n");
+	}|
+	(< IMPORT >(< NAMESPACE >|< ID >)< SEMICOLON >)*< PUBLIC >< ENUM >identifierA=< ID >
+	MethodBody(identifierA){})
+	{
+	  return identifierName;	}
+  
+}
+
+//if multiple implements
+ArrayList returnIntID():
+{
+  ArrayList <String > interfaceID=new ArrayList<String >();
+  Token identifier;
+}
+{
+  (LOOKAHEAD(2)(< COMMA >)?identifier=< ID >
+  {
+    interfaceID.add(identifier.toString());
+  })*
+  {
+	return interfaceID;
+  }
+}
+
+HashMap returnVariables():
+{
+ 	HashMap<String,String > varNames= new HashMap<String,String >();
+}
+{
+    varNames=returnV()
+    {
+      return varNames;
+    }
+}
+
+//return variables
+HashMap returnV():
+{
+  HashMap<String,String > varNames= new HashMap<String,String >();
+  ArrayList<String > Variables = new ArrayList<String >();
+  Token vName,osb=null;
+  Token vType=null,vType1=null;
+  Token publicOrPrivate=null;
+  String variableType="";
+  String type="";
+}
+{  
+  (LOOKAHEAD(5)(publicOrPrivate=< PUBLIC > |publicOrPrivate=< PRIVATE >|publicOrPrivate=< PROTECTED >)?("static")?
+  (< COLLECTION ><LT >(vType1=<ID >|vType1=< PRIMDATATYPE >)<GT >|vType = < PRIMDATATYPE >|vType=< REFDATATYPE > | vType=< ID >(osb=<OSB><CSB >)?)
+  vName=< ID >("="type=VariableAssignment())?Variables=returnMultipleVariables()
+  ";"
+  {
+     if(publicOrPrivate!=null)
+     {
+       if(variableType!=(vType!=null?vType.image:vType1.image)&& variableType!="")
+       {
+   			type=variableType;     	        }
+       else
+       {
+          type=(vType!=null?vType.image:"");       }
+       for(int i=0;i<Variables.size();i++)
+       {
+         if(publicOrPrivate.toString().equals("public"))
+	          varNames.put("+"+Variables.get(i),vType1!=null?(vType1.image+"[*]"):(osb!=null?type+"[]":type));
+         else if(publicOrPrivate.toString().equals("private")||publicOrPrivate==null)
+    	      varNames.put("-"+Variables.get(i),vType1!=null?(vType1.image+"[*]"):(osb!=null?type+"[]":type));
+         else
+              varNames.put("#"+Variables.get(i),vType1!=null?(vType1.image+"[*]"):(osb!=null?type+"[]":type));
+         
+       }
+       if(publicOrPrivate.toString().equals("public"))
+       		varNames.put("+"+vName.image,vType1!=null?(vType1.image+"[*]"):(osb!=null?type+"[]":type));
+       else if(publicOrPrivate.toString().equals("private")||publicOrPrivate==null)
+       		varNames.put("-"+vName.image,vType1!=null?(vType1.image+"[*]"):(osb!=null?type+"[]":type));
+       else
+        	varNames.put("#"+vName.image,vType1!=null?(vType1.image+"[*]"):(osb!=null?type+"[]":type));
+       vType=null;vType1=null;osb=null;
+       publicOrPrivate=null;
+     }
+  })*
+  {
+    return varNames;  }
+  
+}
+
+String VariableAssignment():{
+  String varType="";}
+{
+  {
+    varType=var_skipto(SEMICOLON);    }
+  {
+    return varType;  }}
+
+//if multiple variable declarations(separated by arrows)
+ArrayList returnMultipleVariables():
+{
+  ArrayList<String > Variables = new ArrayList<String >();
+  Token token;
+}
+{
+  (< COMMA > token=< ID >{Variables.add(token.toString());})*
+  {
+    return Variables;
+  }
+}
+
+HashMap returnMethods(Token identifierA):
+{
+  String varMethod="";
+  Token mType=null;
+  Token mName;
+  String getVar="";
+  HashMap<String,String > varNames= new HashMap<String,String >();
+  HashMap<String,String > var= new HashMap<String,String >();
+}
+{
+  
+  (LOOKAHEAD(3)("@"< ID >)?(< PUBLIC >)(< STATIC >)?(< ABSTRACT >)?(mType=<PRIMDATATYPE >|mType=< REFDATATYPE >|mType=< ID >) mName = < ID >  < ORB >
+  varNames=returnMethodVariables()
+  < CRB >("throws"< ID >)?(MethodBody(identifierA))[";"]
+  {
+    if(returnValue!="")
+    {
+      if(returnValue.toString().contains("."))
+      {
+          String add =returnValue.toString().split("\\.")[1];
+          if(add.contains(";") && add.contains("="))
+          {
+            getSetVariables.add(add.trim().split("=")[0].trim());          }
+          else if(add.contains(";"))
+          {
+            getSetVariables.add(add.trim().split(";")[0].trim());          }
+      }
+    }
+   	Iterator<String> keySetIterator = varNames.keySet().iterator();
+   	while(keySetIterator.hasNext()){
+        String nextKey = keySetIterator.next();
+        varMethod += nextKey + ":"+"^"+ varNames.get(nextKey)+"~" + ((keySetIterator.hasNext())?",":"");
+    }
+    varMethod+= "):" + mType.toString();
+    if(returnValue=="")
+      	var.put("+"+mName.image,varMethod);
+    
+    if(returnValue!="") returnValue="";mType=null;varMethod="";mName=null;
+    }|LOOKAHEAD(3)(("public"|"private")mName = < ID >< ORB >varNames=returnMethodVariables()< CRB >MethodBody(identifierA))
+    {
+      Iterator<String> keySetIterator = varNames.keySet().iterator();
+   	  while(keySetIterator.hasNext()){
+        String nextKey = keySetIterator.next();
+        varMethod += nextKey + ":"+"^"+ varNames.get(nextKey)+"~" + ((keySetIterator.hasNext())?",":"");
+      }
+      if(mType==null) varMethod+=")"; else varMethod+= "):" + mType.toString();
+      	var.put("+"+mName.image,varMethod);
+      if(returnValue!="") returnValue="";mType=null;varMethod="";mName=null;
+    }|
+    (< PRIVATE >)?(< ABSTRACT >)?(mType=<PRIMDATATYPE >|mType=< REFDATATYPE >|mType=< ID >) mName = < ID >< ORB >
+    varNames=returnMethodVariables()
+    < CRB >MethodBody(identifierA)[";"]
+    {
+    	
+    })*
+    {
+      return var;    }
+    
+ }
+ 
+//parameters within method declaration
+HashMap returnMethodVariables():
+{
+  HashMap<String,String > varNames= new HashMap<String,String >();
+  Token mType=null,mType1=null;
+  Token mName;
+}
+{
+  (
+    (< COMMA >)?(mType=< PRIMDATATYPE >|mType=< REFDATATYPE >|mType1=< ID >|< COLLECTION ><LT >(mType1=<ID >|mType1=< PRIMDATATYPE >)<GT >)mName=< ID >("[""]")? 
+    {
+      varNames.put(mName.image,(mType!=null)?mType.image:mType1.image);
+    })*
+    {
+      return varNames;
+    }
+}
+
+//parse method body
+void MethodBody(Token identifierA):
+{ 
+  Token t;
+  Stack stack = new Stack();
+}
+{
+         (t="{"
+         {
+           stack.push(t.toString());
+           error_skipto(CBracket,stack,identifierA.toString());         })?
+   
+}
+
